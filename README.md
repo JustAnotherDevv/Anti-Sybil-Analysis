@@ -4,6 +4,16 @@
 
 ## Features
 
+- Example Web3 game db ✅
+
+- Mock data generation for users and transactions ✅
+
+- User positive activity score
+
+- User negative(possible sybil) score
+
+- Dashboard for data visualization
+
 ## Setup
 
 ### Backend
