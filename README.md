@@ -42,8 +42,14 @@ CREATE TABLE IF NOT EXISTS public.players (
         );
 ```
 
-- Run `npm i` inside `/backend` directory in order to install dependenies
+- Run `npm i` inside `/backend` directory in order to install dependenies.
 
-- Run `npm run start` to run server
+- Run `npm run start` to run server.
 
 ### Frontend
+
+- Install dependencies with `npm i`.
+
+- Fill out `.env` with your varaibles.
+
+- Run web app with `npm run dev`.
