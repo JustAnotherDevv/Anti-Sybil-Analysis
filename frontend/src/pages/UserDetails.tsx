@@ -4,7 +4,7 @@ import { Player, Transaction } from "../types";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, AlertTriangle } from "lucide-react";
 import { StatsCard } from "../components/StatsCard";
 import {
   Table,
@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/utils/supabase";
+import calculateActivityScore from "@/utils/calculateActivityScore";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface UserStats {
   totalTransactions: number;
@@ -25,12 +27,27 @@ interface UserStats {
   mostCommonType: string;
 }
 
+interface ActivityScore {
+  finalScore: number;
+  metrics: {
+    volumeScore: number;
+    accountAgeScore: number;
+    levelProgressScore: number;
+    frequencyScore: number;
+    patternScore: number;
+  };
+  riskFactors: string[];
+}
+
 export function UserDetails() {
   const { address } = useParams<{ address: string }>();
   const navigate = useNavigate();
   const [player, setPlayer] = useState<Player | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [activityScore, setActivityScore] = useState<ActivityScore | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -61,6 +78,9 @@ export function UserDetails() {
         return;
       }
 
+      // Calculate activity score
+      const scoreAnalysis = await calculateActivityScore(playerData, txData);
+
       // Calculate stats
       const totalVolume = txData.reduce((sum, tx) => sum + tx.amount, 0);
       const avgAmount = totalVolume / txData.length;
@@ -74,6 +94,7 @@ export function UserDetails() {
 
       setPlayer(playerData);
       setTransactions(txData);
+      setActivityScore(scoreAnalysis);
       setStats({
         totalTransactions: txData.length,
         totalVolume,
@@ -86,7 +107,7 @@ export function UserDetails() {
     fetchUserData();
   }, [address]);
 
-  if (loading || !player || !stats) {
+  if (loading || !player || !stats || !activityScore) {
     return (
       <div className="container max-w-5xl mx-auto p-4 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -114,6 +135,64 @@ export function UserDetails() {
           <ChevronLeft className="mr-2 h-4 w-4" />
           Back to Players
         </Button>
+
+        {/* Activity Score Overview */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity Score Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+              <div className="md:col-span-2">
+                <StatsCard
+                  title="Overall Activity Score"
+                  value={`${activityScore.finalScore}%`}
+                  description="Based on multiple metrics"
+                  className="h-full"
+                />
+              </div>
+              <div className="md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatsCard
+                  title="Volume Score"
+                  value={`${activityScore.metrics.volumeScore.toFixed(1)}%`}
+                  className="h-full"
+                />
+                <StatsCard
+                  title="Account Age"
+                  value={`${activityScore.metrics.accountAgeScore.toFixed(1)}%`}
+                  className="h-full"
+                />
+                <StatsCard
+                  title="Level Progress"
+                  value={`${activityScore.metrics.levelProgressScore.toFixed(
+                    1
+                  )}%`}
+                  className="h-full"
+                />
+                <StatsCard
+                  title="Activity Pattern"
+                  value={`${activityScore.metrics.patternScore.toFixed(1)}%`}
+                  className="h-full"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Risk Factors */}
+        {activityScore.riskFactors.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Risk Factors Detected</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc list-inside">
+                {activityScore.riskFactors.map((factor, index) => (
+                  <li key={index}>{factor}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatsCard
