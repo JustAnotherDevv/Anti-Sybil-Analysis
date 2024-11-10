@@ -1,6 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { ethers, JsonRpcApiProvider } from "ethers";
-import { faker } from "@faker-js/faker";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,124 +8,156 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-async function checkTables() {
-  //   const { error: contractError } = await supabase
-  //     .from("contracts")
-  //     .select("id")
-  //     .limit(1);
+const txCountCache = new Map();
+const processingQueue = [];
+let isProcessing = false;
 
-  const { error: playersError } = await supabase
-    .from("players")
-    .select("id")
-    .limit(1);
-
-  const { error: txError } = await supabase
+async function getTransactionCount(walletAddress) {
+  const { count: sentCount, error: sentError } = await supabase
     .from("transactions")
-    .select("id")
-    .limit(1);
+    .select("*", { count: "exact", head: true })
+    .or(`from_address.eq.${walletAddress}`);
 
-  if (playersError || txError) {
-    console.log("Tables not found. Run this in Supabase SQL:");
-    console.log(`
-      CREATE TABLE IF NOT EXISTS public.players (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        wallet_address VARCHAR NOT NULL UNIQUE,
-        username VARCHAR NOT NULL,
-        level INTEGER DEFAULT 1,
-        experience_points INTEGER DEFAULT 0,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
-      );
+  const { count: receivedCount, error: receivedError } = await supabase
+    .from("transactions")
+    .select("*", { count: "exact", head: true })
+    .or(`to_address.eq.${walletAddress}`);
 
-      CREATE TABLE IF NOT EXISTS public.transactions (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        from_address VARCHAR NOT NULL,
-        to_address VARCHAR NOT NULL,
-        amount DECIMAL NOT NULL,
-        transaction_type VARCHAR NOT NULL,
-        timestamp TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
-      );
-    `);
-    throw new Error("Create required tables first");
+  if (sentError || receivedError) {
+    throw new Error("Error counting transactions");
+  }
+
+  return (sentCount || 0) + (receivedCount || 0);
+}
+
+async function initializeTxCounts() {
+  try {
+    const { data: players, error: playersError } = await supabase
+      .from("players")
+      .select("wallet_address");
+
+    if (playersError) throw playersError;
+
+    console.log("Initializing transaction counts for all players...");
+
+    for (const player of players) {
+      const count = await getTransactionCount(player.wallet_address);
+      txCountCache.set(player.wallet_address, count);
+
+      await supabase
+        .from("players")
+        .update({ total_transactions: count })
+        .eq("wallet_address", player.wallet_address);
+    }
+
+    console.log("✅ Initialized transaction counts for all players");
+  } catch (error) {
+    console.error("Error initializing tx counts:", error);
   }
 }
 
-async function generatePlayers(count) {
-  const players = [];
+async function updateUserTxCount(walletAddress) {
+  try {
+    const previousCount = txCountCache.get(walletAddress) || 0;
+    const newCount = await getTransactionCount(walletAddress);
 
-  for (let i = 0; i < count; i++) {
-    const wallet = ethers.Wallet.createRandom();
+    txCountCache.set(walletAddress, newCount);
 
-    const player = {
-      wallet_address: wallet.address,
-      username: faker.internet.userName(),
-      level: faker.number.int({ min: 1, max: 100 }),
-      experience_points: faker.number.int({ min: 0, max: 10000 }),
-    };
+    const { error: updateError } = await supabase
+      .from("players")
+      .update({ total_transactions: newCount })
+      .eq("wallet_address", walletAddress);
 
-    players.push(player);
+    if (updateError) {
+      throw updateError;
+    }
+
+    const change = newCount - previousCount;
+    console.log(`✅ Updated transaction count for ${walletAddress}:`, {
+      previous: previousCount,
+      new: newCount,
+      change: change,
+    });
+  } catch (error) {
+    console.error("Error in updateUserTxCount:", error);
   }
-
-  const { error } = await supabase.from("players").insert(players);
-
-  if (error) {
-    console.error("Error inserting players:", error);
-    throw error;
-  }
-
-  return players;
 }
 
-async function generateTransactions(players, transactionsPerPlayer) {
-  const transactions = [];
-  const transactionTypes = [
-    "ITEM_PURCHASE",
-    "REWARD_CLAIM",
-    "TOKEN_TRANSFER",
-    "NFT_TRADE",
-  ];
+async function processQueue() {
+  if (isProcessing || processingQueue.length === 0) return;
 
-  for (const player of players) {
-    for (let i = 0; i < transactionsPerPlayer; i++) {
-      const randomRecipient =
-        players[Math.floor(Math.random() * players.length)];
+  isProcessing = true;
 
-      const transaction = {
-        from_address: player.wallet_address,
-        to_address: randomRecipient.wallet_address,
-        amount: parseFloat(faker.finance.amount(0.001, 10, 6)),
-        transaction_type:
-          transactionTypes[Math.floor(Math.random() * transactionTypes.length)],
-        timestamp: faker.date.recent({ days: 30 }),
-      };
+  try {
+    const transaction = processingQueue.shift();
+    const { from_address, to_address } = transaction;
 
-      transactions.push(transaction);
+    console.log(`\n🔔 Processing transaction:`, {
+      from: from_address.slice(0, 6) + "..." + from_address.slice(-4),
+      to: to_address.slice(0, 6) + "..." + to_address.slice(-4),
+      type: transaction.transaction_type,
+    });
+
+    await updateUserTxCount(from_address);
+
+    if (from_address !== to_address) {
+      await updateUserTxCount(to_address);
+    }
+  } finally {
+    isProcessing = false;
+    if (processingQueue.length > 0) {
+      setTimeout(processQueue, 100);
     }
   }
-
-  const { error } = await supabase.from("transactions").insert(transactions);
-
-  if (error) {
-    console.error("Error:", error);
-    throw error;
-  }
 }
 
-async function generateMockData() {
+function handleNewTransaction(payload) {
+  processingQueue.push(payload.new);
+  processQueue();
+}
+
+async function setupRealtimeListener() {
+  console.log("🔄 Setting up realtime listener...");
+
+  const channel = supabase.channel("db-changes").on(
+    "postgres_changes",
+    {
+      event: "INSERT",
+      schema: "public",
+      table: "transactions",
+    },
+    handleNewTransaction
+  );
+
+  channel.subscribe((status, err) => {
+    if (err) {
+      console.error("Subscription error:", err);
+    } else {
+      console.log("📡 Subscription status:", status);
+    }
+  });
+
+  return channel;
+}
+
+async function init() {
   try {
-    console.log("Checking database tables ");
-    await checkTables();
-
-    console.log("Generating players");
-    const players = await generatePlayers(100);
-
-    console.log("Generating transactions");
-    await generateTransactions(players, 5);
-
-    console.log("Mock data done");
+    console.log("🚀 Initializing transaction listener...");
+    await initializeTxCounts();
+    await setupRealtimeListener();
+    console.log(
+      "✅ Realtime listener active and waiting for transactions...\n"
+    );
   } catch (error) {
-    console.error("Error generating mock: ", error);
+    console.error("❌ Initialization error:", error);
+    process.exit(1);
   }
 }
 
-generateMockData();
-// main();
+process.on("SIGINT", () => {
+  console.log("\n👋 Shutting down gracefully...");
+  supabase.removeAllChannels();
+  process.exit(0);
+});
+
+init();
