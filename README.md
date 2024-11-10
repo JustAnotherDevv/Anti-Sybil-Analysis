@@ -4,6 +4,10 @@
 
 A real-time blockchain analysis tool that helps identify potentially fraudulent behavior and Sybil attacks in Web3 gaming environments. The system analyzes user transaction patterns, interaction behaviors, and account characteristics to assign risk scores and detect suspicious activities.
 
+![User Details](https://media.discordapp.net/attachments/892879039981817907/1305069586839900180/image.png?ex=6731b044&is=67305ec4&hm=e1bedba310b6e7ff95b77c5d9cfc26b98b983e34b34d552fc897f9e51129edfd&=&format=webp&quality=lossless&width=1100&height=648)
+
+![Users List](https://media.discordapp.net/attachments/892879039981817907/1305069687406854234/image.png?ex=6731b05c&is=67305edc&hm=32c006587c3fd7afc42ba31ec0713581d345dcd4e3e4a23ba51cd6d1ab6c7577&=&format=webp&quality=lossless&width=1894&height=1116)
+
 ```mermaid
 graph TB
     subgraph Data Sources

@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/utils/supabase";
 import calculateActivityScore from "@/utils/calculateActivityScore";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ActivityMetricsRadar } from "@/components/ActivityMetricsRadar";
 
 interface UserStats {
   totalTransactions: number;
@@ -28,15 +29,20 @@ interface UserStats {
 }
 
 interface ActivityScore {
-  finalScore: number;
-  metrics: {
-    volumeScore: number;
-    accountAgeScore: number;
-    levelProgressScore: number;
-    frequencyScore: number;
-    patternScore: number;
-  };
-  riskFactors: string[];
+  total_score: number;
+  transaction_score: number;
+  volume_score: number;
+  frequency_score: number;
+  age_score: number;
+  active_days: number;
+  risk_level: "LOW" | "MEDIUM" | "HIGH";
+  risk_factors: string[];
+  human_probability: number;
+  unique_interactions_count: number;
+  circular_transactions_count: number;
+  first_tx_date: string;
+  last_tx_date: string;
+  calculated_at: string;
 }
 
 export function UserDetails() {
@@ -54,7 +60,6 @@ export function UserDetails() {
     async function fetchUserData() {
       if (!address) return;
 
-      // Fetch player details
       const { data: playerData, error: playerError } = await supabase
         .from("players")
         .select("*")
@@ -66,7 +71,6 @@ export function UserDetails() {
         return;
       }
 
-      // Fetch transactions
       const { data: txData, error: txError } = await supabase
         .from("transactions")
         .select("*")
@@ -78,10 +82,17 @@ export function UserDetails() {
         return;
       }
 
-      // Calculate activity score
-      const scoreAnalysis = await calculateActivityScore(playerData, txData);
+      const { data: scoreData, error: scoreError } = await supabase
+        .from("activity_scores")
+        .select("*")
+        .eq("wallet_address", address)
+        .single();
 
-      // Calculate stats
+      if (scoreError) {
+        console.error("Error fetching activity score:", scoreError);
+        return;
+      }
+
       const totalVolume = txData.reduce((sum, tx) => sum + tx.amount, 0);
       const avgAmount = totalVolume / txData.length;
       const typeCount = txData.reduce((acc, tx) => {
@@ -94,7 +105,7 @@ export function UserDetails() {
 
       setPlayer(playerData);
       setTransactions(txData);
-      setActivityScore(scoreAnalysis);
+      setActivityScore(scoreData);
       setStats({
         totalTransactions: txData.length,
         totalVolume,
@@ -124,6 +135,19 @@ export function UserDetails() {
     );
   }
 
+  function getRiskLevelColor(level: string) {
+    switch (level) {
+      case "HIGH":
+        return "text-red-500";
+      case "MEDIUM":
+        return "text-yellow-500";
+      case "LOW":
+        return "text-green-500";
+      default:
+        return "";
+    }
+  }
+
   return (
     <div className="w-screen">
       <motion.div
@@ -137,7 +161,7 @@ export function UserDetails() {
         </Button>
 
         {/* Activity Score Overview */}
-        <Card>
+        {/* <Card>
           <CardHeader>
             <CardTitle>Activity Score Overview</CardTitle>
           </CardHeader>
@@ -177,16 +201,106 @@ export function UserDetails() {
               </div>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* Risk Factors */}
-        {activityScore.riskFactors.length > 0 && (
+        {/* {activityScore.riskFactors.length > 0 && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Risk Factors Detected</AlertTitle>
             <AlertDescription>
               <ul className="list-disc list-inside">
                 {activityScore.riskFactors.map((factor, index) => (
+                  <li key={index}>{factor}</li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )} */}
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity Score Overview</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+              <div className="md:col-span-2">
+                <StatsCard
+                  title="Overall Activity Score"
+                  value={`${activityScore.total_score.toFixed(1)}%`}
+                  description={`Risk Level: ${activityScore.risk_level}`}
+                  className={`h-full ${getRiskLevelColor(
+                    activityScore.risk_level
+                  )}`}
+                />
+              </div>
+              <div className="md:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                <StatsCard
+                  title="Transaction Score"
+                  value={`${activityScore.transaction_score.toFixed(1)}%`}
+                  className="h-full"
+                />
+                <StatsCard
+                  title="Volume Score"
+                  value={`${activityScore.volume_score.toFixed(1)}%`}
+                  className="h-full"
+                />
+                <StatsCard
+                  title="Frequency Score"
+                  value={`${activityScore.frequency_score.toFixed(1)}%`}
+                  className="h-full"
+                />
+                <StatsCard
+                  title="Age Score"
+                  value={`${activityScore.age_score.toFixed(1)}%`}
+                  className="h-full"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <ActivityMetricsRadar activityScore={activityScore} />
+
+        {/* Sybil Detection Metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sybil Detection Metrics</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <StatsCard
+                title="Human Probability"
+                value={`${activityScore.human_probability}%`}
+                className="h-full"
+              />
+              <StatsCard
+                title="Unique Interactions"
+                value={activityScore.unique_interactions_count.toString()}
+                className="h-full"
+              />
+              <StatsCard
+                title="Circular Transactions"
+                value={activityScore.circular_transactions_count.toString()}
+                className="h-full"
+              />
+              <StatsCard
+                title="Active Days"
+                value={activityScore.active_days.toString()}
+                className="h-full"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Risk Factors */}
+        {activityScore.risk_factors.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Risk Factors Detected</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc list-inside">
+                {activityScore.risk_factors.map((factor, index) => (
                   <li key={index}>{factor}</li>
                 ))}
               </ul>
