@@ -2,7 +2,9 @@
 
 ## Overview
 
-````mermaid
+A real-time blockchain analysis tool that helps identify potentially fraudulent behavior and Sybil attacks in Web3 gaming environments. The system analyzes user transaction patterns, interaction behaviors, and account characteristics to assign risk scores and detect suspicious activities.
+
+```mermaid
 graph TB
     subgraph Data Sources
         P[Players Table] -->|Wallet Addresses| AC
@@ -72,15 +74,19 @@ graph TB
     class P,T,AS database
     class SC1,AL1,TT,PD component
     class AC,RD,PS,SC analysis
-    ```
+```
 
-### Usser Score
+### User Score
 
 Implementation of tracking positive user score based on their on-chain.
 
-### Anti-Sybil
+### Sybil Detection Methodology
 
-Implementation of Anti-Sybil measures to combat airdrop farming, bots.
+Implementation of Anti-Sybil measures to combat airdrop farming, bots:
+
+1.  Pattern Recognition - Detects automated transactions by analyzing time intervals between consecutive transactions
+2.  Network Analysis of circular transactions - Identifies potential money cycling between accounts
+3.  Batch Detection - Identifies automated transaction patterns with identical amounts
 
 ## Features
 
@@ -216,7 +222,7 @@ BEGIN
     WHERE a.wallet_address = address;
 END;
 $$ LANGUAGE plpgsql;
-````
+```
 
 - Enable **Realtime** for every table in the Supabase UI(this is needed for transaction listener).
 
